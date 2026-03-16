@@ -42,4 +42,10 @@ export const adminAPI = {
   delete:    (id)         => api.delete(`/admins/${id}`),
 };
 
+// ========== Auth API ==========
+export const authAPI = {
+  login:     (data)       => api.post('/auth/login', data),
+  getMe:     ()           => api.get('/auth/me'),
+};
+
 export default api;

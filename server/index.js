@@ -13,6 +13,8 @@ const authorRoutes = require('./routes/authors');
 const bookRoutes = require('./routes/books');
 const borrowRoutes = require('./routes/borrows');
 const adminRoutes = require('./routes/admins');
+const authRoutes = require('./routes/auth');
+const auth = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -41,10 +43,14 @@ const swaggerSpec = swaggerJsdoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // --- API Routes ---
-app.use('/api/authors', authorRoutes);
-app.use('/api/books', bookRoutes);
-app.use('/api/borrows', borrowRoutes);
-app.use('/api/admins', adminRoutes);
+// Public routes (visitors can access)
+app.use('/api/authors', authorRoutes); // Public - visitors can see authors
+app.use('/api/books', bookRoutes); // Public - visitors can see books
+app.use('/api/auth', authRoutes); // Public - login endpoint
+
+// Protected routes (admin only)
+app.use('/api/admins', auth, adminRoutes); // Protected - admin management
+app.use('/api/borrows', auth, borrowRoutes); // Protected - borrow records
 
 // --- Health check endpoint ---
 app.get('/api/health', (req, res) => {

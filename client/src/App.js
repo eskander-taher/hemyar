@@ -3,7 +3,7 @@
 // Follows interface design principles: consistency, visibility, feedback,
 // affordance, constraint, and mapping.
 import React, { useState, useEffect, useCallback } from 'react';
-import { authorAPI, bookAPI, borrowAPI, adminAPI } from './services/api';
+import { authorAPI, bookAPI, borrowAPI, adminAPI, authAPI } from './services/api';
 import './App.css';
 
 // ========== REUSABLE MODAL COMPONENT ==========
@@ -98,6 +98,28 @@ function BorrowForm({ books, onSubmit, onCancel }) {
   );
 }
 
+// ========== LOGIN FORM ==========
+function LoginForm({ onSubmit, onCancel }) {
+  const [form, setForm] = useState({ email: '', password: '' });
+  const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
+  const handleSubmit = e => { e.preventDefault(); onSubmit(form); };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <label>Email *
+        <input name="email" type="email" value={form.email} onChange={handleChange} required />
+      </label>
+      <label>Password *
+        <input name="password" type="password" value={form.password} onChange={handleChange} required />
+      </label>
+      <div className="form-actions">
+        <button type="submit" className="btn btn-primary">Login</button>
+        <button type="button" className="btn btn-secondary" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
 // ========== ADMIN FORM ==========
 function AdminForm({ initial, onSubmit, onCancel }) {
   const [form, setForm] = useState(initial || { 
@@ -161,6 +183,8 @@ function App() {
   const [books, setBooks] = useState([]);
   const [borrows, setBorrows] = useState([]);
   const [admins, setAdmins] = useState([]);
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('token'));
   const [modal, setModal] = useState(null); // { type, data }
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
@@ -171,22 +195,68 @@ function App() {
     setTimeout(() => setMessage(null), 3000);
   };
 
+  // Login handler
+  const handleLogin = async (data) => {
+    try {
+      const res = await authAPI.login(data);
+      const { token: newToken, admin } = res.data;
+      localStorage.setItem('token', newToken);
+      setToken(newToken);
+      setUser(admin);
+      setModal(null);
+      showMessage('Login successful!');
+      fetchData(); // Refresh data after login
+    } catch (e) {
+      showMessage(e.response?.data?.message || 'Login failed', 'error');
+    }
+  };
+
+  // Logout handler
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    setToken(null);
+    setUser(null);
+    setBorrows([]); // Clear sensitive data
+    setAdmins([]); // Clear sensitive data
+    showMessage('Logged out successfully');
+  };
+
+  // Check token on mount
+  useEffect(() => {
+    if (token) {
+      authAPI.getMe().then(res => {
+        setUser(res.data);
+      }).catch(() => {
+        localStorage.removeItem('token');
+        setToken(null);
+      });
+    }
+  }, [token]);
+
   // Fetch all data
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [aRes, bRes, brRes, adRes] = await Promise.all([
-        authorAPI.getAll(), bookAPI.getAll(), borrowAPI.getAll(), adminAPI.getAll()
-      ]);
-      setAuthors(aRes.data);
-      setBooks(bRes.data);
-      setBorrows(brRes.data);
-      setAdmins(adRes.data);
+      const requests = [authorAPI.getAll(), bookAPI.getAll()];
+      
+      // Only fetch protected data if authenticated
+      if (token) {
+        requests.push(borrowAPI.getAll(), adminAPI.getAll());
+      }
+      
+      const responses = await Promise.all(requests);
+      setAuthors(responses[0].data);
+      setBooks(responses[1].data);
+      
+      if (token && responses.length > 2) {
+        setBorrows(responses[2].data);
+        setAdmins(responses[3].data);
+      }
     } catch (err) {
       showMessage('Failed to load data: ' + err.message, 'error');
     }
     setLoading(false);
-  }, []);
+  }, [token]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -250,6 +320,16 @@ function App() {
       <header className="app-header">
         <h1>Book Library</h1>
         <p>Management System</p>
+        <div className="auth-status">
+          {user ? (
+            <div className="user-info">
+              <span>Welcome, {user.username}</span>
+              <button className="btn btn-secondary btn-sm" onClick={handleLogout}>Logout</button>
+            </div>
+          ) : (
+            <button className="btn btn-primary btn-sm" onClick={() => setModal({ type: 'login' })}>Admin Login</button>
+          )}
+        </div>
       </header>
 
       {/* Feedback message */}
@@ -257,7 +337,12 @@ function App() {
 
       {/* Navigation tabs — GUI design principle: Consistency */}
       <nav className="tabs">
-        {['books', 'authors', 'borrows', 'admins'].map(t => (
+        {['books', 'authors'].map(t => (
+          <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
+            {t.charAt(0).toUpperCase() + t.slice(1)}
+          </button>
+        ))}
+        {user && ['borrows', 'admins'].map(t => (
           <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
             {t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
@@ -273,11 +358,11 @@ function App() {
           <>
             <div className="toolbar">
               <h2>Books ({books.length})</h2>
-              <button className="btn btn-primary" onClick={() => setModal({ type: 'createBook' })}>+ Add Book</button>
+              {user && <button className="btn btn-primary" onClick={() => setModal({ type: 'createBook' })}>+ Add Book</button>}
             </div>
             <table className="data-table">
               <thead>
-                <tr><th>Title</th><th>Author</th><th>Genre</th><th>Year</th><th>Available</th><th>Actions</th></tr>
+                <tr><th>Title</th><th>Author</th><th>Genre</th><th>Year</th><th>Available</th>{user && <th>Actions</th>}</tr>
               </thead>
               <tbody>
                 {books.map(b => (
@@ -287,10 +372,12 @@ function App() {
                     <td><span className="badge">{b.genre}</span></td>
                     <td>{b.year}</td>
                     <td><span className={`status ${b.available ? 'available' : 'borrowed'}`}>{b.available ? 'Yes' : 'No'}</span></td>
-                    <td className="actions">
-                      <button className="btn btn-sm" onClick={() => setModal({ type: 'editBook', data: { ...b, author: b.author?._id } })}>Edit</button>
-                      <button className="btn btn-sm btn-danger" onClick={() => handleDeleteBook(b._id)}>Delete</button>
-                    </td>
+                    {user && (
+                      <td className="actions">
+                        <button className="btn btn-sm" onClick={() => setModal({ type: 'editBook', data: { ...b, author: b.author?._id } })}>Edit</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => handleDeleteBook(b._id)}>Delete</button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -303,11 +390,11 @@ function App() {
           <>
             <div className="toolbar">
               <h2>Authors ({authors.length})</h2>
-              <button className="btn btn-primary" onClick={() => setModal({ type: 'createAuthor' })}>+ Add Author</button>
+              {user && <button className="btn btn-primary" onClick={() => setModal({ type: 'createAuthor' })}>+ Add Author</button>}
             </div>
             <table className="data-table">
               <thead>
-                <tr><th>Name</th><th>Country</th><th>Birth Year</th><th>Actions</th></tr>
+                <tr><th>Name</th><th>Country</th><th>Birth Year</th>{user && <th>Actions</th>}</tr>
               </thead>
               <tbody>
                 {authors.map(a => (
@@ -315,10 +402,12 @@ function App() {
                     <td>{a.name}</td>
                     <td>{a.country}</td>
                     <td>{a.birthYear || '—'}</td>
-                    <td className="actions">
-                      <button className="btn btn-sm" onClick={() => setModal({ type: 'editAuthor', data: a })}>Edit</button>
-                      <button className="btn btn-sm btn-danger" onClick={() => handleDeleteAuthor(a._id)}>Delete</button>
-                    </td>
+                    {user && (
+                      <td className="actions">
+                        <button className="btn btn-sm" onClick={() => setModal({ type: 'editAuthor', data: a })}>Edit</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => handleDeleteAuthor(a._id)}>Delete</button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -413,6 +502,11 @@ function App() {
       {modal?.type === 'createBorrow' && (
         <Modal title="Borrow a Book" onClose={() => setModal(null)}>
           <BorrowForm books={books} onSubmit={handleBorrow} onCancel={() => setModal(null)} />
+        </Modal>
+      )}
+      {modal?.type === 'login' && (
+        <Modal title="Admin Login" onClose={() => setModal(null)}>
+          <LoginForm onSubmit={handleLogin} onCancel={() => setModal(null)} />
         </Modal>
       )}
       {modal?.type === 'createAdmin' && (

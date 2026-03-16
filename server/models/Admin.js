@@ -2,6 +2,7 @@
 // Represents an administrator user in the library system.
 // Independent entity with no dependencies on other schemas.
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
 /**
  * Admin Schema
@@ -28,6 +29,13 @@ const adminSchema = new mongoose.Schema({
     unique: true,
     match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email'],
   },
+  // Password — required field, will be hashed
+  password: {
+    type: String,
+    required: [true, 'Password is required'],
+    minlength: 6,
+    select: false, // Don't include password in queries by default
+  },
   // Role of the admin in the system
   role: {
     type: String,
@@ -53,5 +61,17 @@ const adminSchema = new mongoose.Schema({
 }, {
   timestamps: true, // adds createdAt and updatedAt fields
 });
+
+// Pre-save hook to hash password before saving
+adminSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) return next();
+  this.password = await bcrypt.hash(this.password, 12);
+  next();
+});
+
+// Method to compare passwords
+adminSchema.methods.comparePassword = async function(candidatePassword) {
+  return await bcrypt.compare(candidatePassword, this.password);
+};
 
 module.exports = mongoose.model('Admin', adminSchema);
