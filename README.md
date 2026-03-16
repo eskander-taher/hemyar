@@ -162,7 +162,7 @@ npm test
 ```bash
 cd loadtest
 pip install locust
-locust -f locustfile.py --host=http://localhost:5000
+locust -f locustfile.py --host=http://157.22.230.46:5000
 # Open http://localhost:8089 for Locust UI
 ```
 
@@ -218,4 +218,4 @@ pm2 startup
 
 ## License
 
-MIT — University Project
+UUST — University Project
