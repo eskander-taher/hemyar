@@ -12,6 +12,7 @@ const connectDB = require('./config/db');
 const authorRoutes = require('./routes/authors');
 const bookRoutes = require('./routes/books');
 const borrowRoutes = require('./routes/borrows');
+const adminRoutes = require('./routes/admins');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -43,6 +44,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use('/api/authors', authorRoutes);
 app.use('/api/books', bookRoutes);
 app.use('/api/borrows', borrowRoutes);
+app.use('/api/admins', adminRoutes);
 
 // --- Health check endpoint ---
 app.get('/api/health', (req, res) => {
@@ -58,6 +60,7 @@ app.get('/', (req, res) => {
       authors: '/api/authors',
       books: '/api/books',
       borrows: '/api/borrows',
+      admins: '/api/admins',
     },
   });
 });

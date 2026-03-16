@@ -3,7 +3,7 @@
 // Follows interface design principles: consistency, visibility, feedback,
 // affordance, constraint, and mapping.
 import React, { useState, useEffect, useCallback } from 'react';
-import { authorAPI, bookAPI, borrowAPI } from './services/api';
+import { authorAPI, bookAPI, borrowAPI, adminAPI } from './services/api';
 import './App.css';
 
 // ========== REUSABLE MODAL COMPONENT ==========
@@ -98,12 +98,69 @@ function BorrowForm({ books, onSubmit, onCancel }) {
   );
 }
 
+// ========== ADMIN FORM ==========
+function AdminForm({ initial, onSubmit, onCancel }) {
+  const [form, setForm] = useState(initial || { 
+    username: '', 
+    email: '', 
+    role: 'assistant', 
+    permissions: ['manage_books'], 
+    isActive: true 
+  });
+  const handleChange = e => {
+    if (e.target.name === 'permissions') {
+      const selectedPermissions = Array.from(e.target.selectedOptions, option => option.value);
+      setForm({ ...form, [e.target.name]: selectedPermissions });
+    } else if (e.target.type === 'checkbox') {
+      setForm({ ...form, [e.target.name]: e.target.checked });
+    } else {
+      setForm({ ...form, [e.target.name]: e.target.value });
+    }
+  };
+  const handleSubmit = e => { e.preventDefault(); onSubmit(form); };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <label>Username *
+        <input name="username" value={form.username} onChange={handleChange} required minLength="3" maxLength="30" />
+      </label>
+      <label>Email *
+        <input name="email" type="email" value={form.email} onChange={handleChange} required />
+      </label>
+      <label>Role
+        <select name="role" value={form.role} onChange={handleChange}>
+          {['assistant', 'librarian', 'super_admin'].map(r =>
+            <option key={r} value={r}>{r.replace('_', ' ').charAt(0).toUpperCase() + r.replace('_', ' ').slice(1)}</option>
+          )}
+        </select>
+      </label>
+      <label>Permissions
+        <select name="permissions" value={form.permissions} onChange={handleChange} multiple size="5">
+          {['manage_authors', 'manage_books', 'manage_borrows', 'manage_admins', 'view_reports'].map(p =>
+            <option key={p} value={p}>{p.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>
+          )}
+        </select>
+        <small>Hold Ctrl/Cmd to select multiple</small>
+      </label>
+      <label className="checkbox-label">
+        <input name="isActive" type="checkbox" checked={form.isActive} onChange={handleChange} />
+        Active Account
+      </label>
+      <div className="form-actions">
+        <button type="submit" className="btn btn-primary">Save</button>
+        <button type="button" className="btn btn-secondary" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
 // ========== MAIN APP ==========
 function App() {
   const [tab, setTab] = useState('books');
   const [authors, setAuthors] = useState([]);
   const [books, setBooks] = useState([]);
   const [borrows, setBorrows] = useState([]);
+  const [admins, setAdmins] = useState([]);
   const [modal, setModal] = useState(null); // { type, data }
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
@@ -118,12 +175,13 @@ function App() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [aRes, bRes, brRes] = await Promise.all([
-        authorAPI.getAll(), bookAPI.getAll(), borrowAPI.getAll()
+      const [aRes, bRes, brRes, adRes] = await Promise.all([
+        authorAPI.getAll(), bookAPI.getAll(), borrowAPI.getAll(), adminAPI.getAll()
       ]);
       setAuthors(aRes.data);
       setBooks(bRes.data);
       setBorrows(brRes.data);
+      setAdmins(adRes.data);
     } catch (err) {
       showMessage('Failed to load data: ' + err.message, 'error');
     }
@@ -172,6 +230,19 @@ function App() {
     try { await borrowAPI.delete(id); showMessage('Record deleted!'); fetchData(); }
     catch (e) { showMessage(e.response?.data?.message || 'Error', 'error'); }
   };
+  const handleCreateAdmin = async (data) => {
+    try { await adminAPI.create(data); showMessage('Admin created!'); setModal(null); fetchData(); }
+    catch (e) { showMessage(e.response?.data?.message || 'Error', 'error'); }
+  };
+  const handleUpdateAdmin = async (data) => {
+    try { await adminAPI.update(data._id, data); showMessage('Admin updated!'); setModal(null); fetchData(); }
+    catch (e) { showMessage(e.response?.data?.message || 'Error', 'error'); }
+  };
+  const handleDeleteAdmin = async (id) => {
+    if (!window.confirm('Delete this admin?')) return;
+    try { await adminAPI.delete(id); showMessage('Admin deleted!'); fetchData(); }
+    catch (e) { showMessage(e.response?.data?.message || 'Error', 'error'); }
+  };
 
   return (
     <div className="app">
@@ -186,7 +257,7 @@ function App() {
 
       {/* Navigation tabs — GUI design principle: Consistency */}
       <nav className="tabs">
-        {['books', 'authors', 'borrows'].map(t => (
+        {['books', 'authors', 'borrows', 'admins'].map(t => (
           <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
             {t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
@@ -286,6 +357,36 @@ function App() {
             </table>
           </>
         )}
+
+        {/* ===== ADMINS TAB ===== */}
+        {tab === 'admins' && (
+          <>
+            <div className="toolbar">
+              <h2>Admins ({admins.length})</h2>
+              <button className="btn btn-primary" onClick={() => setModal({ type: 'createAdmin' })}>+ Add Admin</button>
+            </div>
+            <table className="data-table">
+              <thead>
+                <tr><th>Username</th><th>Email</th><th>Role</th><th>Permissions</th><th>Status</th><th>Actions</th></tr>
+              </thead>
+              <tbody>
+                {admins.map(ad => (
+                  <tr key={ad._id}>
+                    <td>{ad.username}</td>
+                    <td>{ad.email}</td>
+                    <td><span className="badge">{ad.role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</span></td>
+                    <td>{ad.permissions.join(', ').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</td>
+                    <td><span className={`status ${ad.isActive ? 'available' : 'borrowed'}`}>{ad.isActive ? 'Active' : 'Inactive'}</span></td>
+                    <td className="actions">
+                      <button className="btn btn-sm" onClick={() => setModal({ type: 'editAdmin', data: ad })}>Edit</button>
+                      <button className="btn btn-sm btn-danger" onClick={() => handleDeleteAdmin(ad._id)}>Delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
       </main>
 
       {/* ===== MODALS ===== */}
@@ -312,6 +413,16 @@ function App() {
       {modal?.type === 'createBorrow' && (
         <Modal title="Borrow a Book" onClose={() => setModal(null)}>
           <BorrowForm books={books} onSubmit={handleBorrow} onCancel={() => setModal(null)} />
+        </Modal>
+      )}
+      {modal?.type === 'createAdmin' && (
+        <Modal title="Add Admin" onClose={() => setModal(null)}>
+          <AdminForm onSubmit={handleCreateAdmin} onCancel={() => setModal(null)} />
+        </Modal>
+      )}
+      {modal?.type === 'editAdmin' && (
+        <Modal title="Edit Admin" onClose={() => setModal(null)}>
+          <AdminForm initial={modal.data} onSubmit={handleUpdateAdmin} onCancel={() => setModal(null)} />
         </Modal>
       )}
 

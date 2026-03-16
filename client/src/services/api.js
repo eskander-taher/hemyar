@@ -33,4 +33,13 @@ export const borrowAPI = {
   delete:    (id)         => api.delete(`/borrows/${id}`),
 };
 
+// ========== Admin API ==========
+export const adminAPI = {
+  getAll:    ()           => api.get('/admins'),
+  getById:   (id)         => api.get(`/admins/${id}`),
+  create:    (data)       => api.post('/admins', data),
+  update:    (id, data)   => api.put(`/admins/${id}`, data),
+  delete:    (id)         => api.delete(`/admins/${id}`),
+};
+
 export default api;
